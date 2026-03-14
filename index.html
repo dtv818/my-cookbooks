@@ -54,6 +54,116 @@
         document.getElementById(view + '-view').classList.remove('hidden');
         document.getElementById('view-title').innerText = view.charAt(0).toUpperCase() + view.slice(1);
     }
+    async function importFromUrl() {
+    const url = document.getElementById('import-url').value;
+    if (!url) return alert("Please paste a URL first!");
+
+    // We use an open-source tool called 'AllOrigins' to bypass 'CORS' blocks
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    
+    try {
+        const response = await fetch(proxyUrl);
+        const data = await response.json();
+        const html = data.contents;
+        
+        // Use a temporary element to parse the HTML
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Search for the hidden "JSON-LD" recipe data
+        const jsonLd = doc.querySelector('script[type="application/ld+json"]');
+        
+        if (jsonLd) {
+            const recipeData = JSON.parse(jsonLd.innerText);
+            // If it's an array, find the 'Recipe' type object
+            const recipe = Array.isArray(recipeData) ? recipeData.find(i => i['@type'] === 'Recipe') : recipeData;
+            
+            saveRecipe({
+                title: recipe.name,
+                ingredients: recipe.recipeIngredient,
+                instructions: recipe.recipeInstructions,
+                source: url
+            });
+            alert("Recipe Imported!");
+        } else {
+            alert("Couldn't find structured recipe data. You might have to copy/paste manually.");
+        }
+    } catch (error) {
+        console.error(error);
+        alert("Import failed. The site might be protected.");
+    }// Initialization: Load data from the phone's memory on startup
+let myLibrary = JSON.parse(localStorage.getItem('recipeLibrary')) || { books: [], recipes: [], log: [] };
+
+function saveToPhone() {
+    localStorage.setItem('recipeLibrary', JSON.stringify(myLibrary));
+    renderLibrary();
+    renderSearch();
+    renderLog();
+}
+
+// --- Library Functions ---
+function addBook() {
+    const title = prompt("Enter Cookbook Title:");
+    if (title) {
+        myLibrary.books.push({ id: Date.now(), title: title, recipes: [] });
+        saveToPhone();
+    }
+}
+
+function renderLibrary() {
+    const list = document.getElementById('book-list');
+    list.innerHTML = myLibrary.books.map(book => `
+        <div class="card">
+            <strong>📖 ${book.title}</strong>
+            <p>${myLibrary.recipes.filter(r => r.bookId === book.id).length} Recipes saved</p>
+        </div>
+    `).join('');
+}
+
+// --- Search Functions ---
+function renderSearch() {
+    const results = document.getElementById('results-list');
+    const searchTerm = document.getElementById('search-bar').value.toLowerCase();
+    
+    const filtered = myLibrary.recipes.filter(r => 
+        r.title.toLowerCase().includes(searchTerm) || 
+        r.ingredients.some(i => i.toLowerCase().includes(searchTerm))
+    );
+
+    results.innerHTML = filtered.map(r => `
+        <div class="card">
+            <strong>🍴 ${r.title}</strong><br>
+            <small>Source: ${r.bookName || 'Web Import'}</small>
+            <button onclick="logMeal('${r.title}')">Add to Log</button>
+        </div>
+    `).join('');
+}
+
+// --- History/Log Functions ---
+function logMeal(recipeTitle) {
+    const note = prompt(`Any notes for ${recipeTitle}?`);
+    myLibrary.log.push({
+        date: new Date().toLocaleDateString(),
+        title: recipeTitle,
+        note: note
+    });
+    saveToPhone();
+    alert("Saved to History!");
+}
+
+function renderLog() {
+    const list = document.getElementById('history-list');
+    list.innerHTML = myLibrary.log.map(entry => `
+        <div class="card">
+            <strong>${entry.date}</strong>: ${entry.title}<br>
+            <em>Note: ${entry.note}</em>
+        </div>
+    `).reverse().join(''); // Show newest first
+}
+
+// Run on page load
+renderLibrary();
+}
 </script>
 
 </body>
